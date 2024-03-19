@@ -146,39 +146,22 @@ def deal_with_input(input_data):
 	key = re.search(domain_pattern, input_data)
 	# database = 
 
-app = Flask(__name__)
-@app.route('/', methods=['GET', 'POST'])
-def index(key):
-	if request.method == 'POST':  
-
-		user_input = request.form.get('user_input')  
-
-		# 对输入进行 MD5 加密  
-
-		result = query(user_input, key)
-		return render_template('index.html', result=result)  
-
-	return render_template('index.html', result='') 
-
-
-
 if __name__ == '__main__':
 
 	#初始化fofa客户端
 	client = Client()
 
-	index(client.key)
-	# print(res)
-	app.run(debug=True)
+	res = query("ceprei.com", client.key)
+	print(res)
 	
 	#读取需要处理的数据
-	# hosts = read_file('ten.txt')
+	hosts = read_file('ten.txt')
 
 	#查询汇总fofa的数据
-	# all_items = data_handle(hosts)
+	all_items = data_handle(hosts)
 
 	#将查询汇总的数据写入csv表格中
-	# writer_file('example.csv', all_items)
+	writer_file('example.csv', all_items)
 	
 
 		
