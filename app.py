@@ -13,6 +13,7 @@ import csv
 import datetime
 import urllib3
 import re
+from flask import Flask, render_template, request
 
 requests = requests.Session()
 requests.trust_env = False
@@ -145,6 +146,19 @@ def deal_with_input(input_data):
 	key = re.search(domain_pattern, input_data)
 	# database = 
 
+app = Flask(__name__)
+@app.route('/', methods=['GET', 'POST'])
+def index(key):
+	if request.method == 'POST':  
+
+		user_input = request.form.get('user_input')  
+
+		# 对输入进行 MD5 加密  
+
+		result = query(user_input, key)
+		return render_template('index.html', result=result)  
+
+	return render_template('index.html', result='') 
 
 
 
@@ -153,8 +167,9 @@ if __name__ == '__main__':
 	#初始化fofa客户端
 	client = Client()
 
-	res = query("ceprei.com", client.key)
-	print(res)
+	index(client.key)
+	# print(res)
+	app.run(debug=True)
 	
 	#读取需要处理的数据
 	# hosts = read_file('ten.txt')
