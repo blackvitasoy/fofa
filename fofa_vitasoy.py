@@ -27,52 +27,69 @@ requests.trust_env = False
 #解决报错
 urllib3.disable_warnings()
 
-class Client:
-	def __init__(self):
-		config = configparser.ConfigParser()
-		config.read('fofa.ini', encoding="utf-8")
-		self.email = config.get("userinfo", "email")
-		self.key = config.get("userinfo", "key")
-		self.size = config.get("size", "size")
-		self.full = config.get("full", "full")
-		self.base_url = "https://fofa.so"
-		self.base_url = "https://fofa.info"
-		self.search_api_url = "/api/v1/search/all"
-		self.login_api_url = "/api/v1/info/my"
-		self.get_userinfo()  # check email and key
+class Client():
 
+	#客户端初始化
+	def __init__(self,query_str=""):
+		config = configparser.ConfigParser()
+
+		config.read('fofa.ini', encoding="utf-8")
+
+		self.email = config.get('userinfo', "email")
+		self.key = config.get("userinfo", "key")
+
+		self.fileds = config.get("fields", "fields")
+		self.size = config.get("size", "size")
+		self.next = ""
+		self.full = config.get("full", "full")
+
+		self.base_url = "https://fofa.info"
+		self.search_api = "/api/v1/search/all"
+		self.login_api_url = "/api/v1/info/my"
+		#该接口未开发，觉得实用性不大
+		self.host_api_url = "/api/v1/host/"
+		self.next_api_url = "/api/v1/search/next"
+		self.query_str = query_str.encode('utf-8')
+
+
+		self.proxy = config.get("proxy", "proxy")
+		if self.proxy:
+			self.proxy = {"http": "http://127.0.0.1:8080", "https":"https://127.0.0.1:8080"}
+		else:
+			self.proxy = {}
+
+
+	#获取账号信息
 	def get_userinfo(self):
 		api_full_url = "%s%s" % (self.base_url, self.login_api_url)
 		param = {"email": self.email, "key": self.key}
-		res = self.__http_get(api_full_url, param)
-		return json.loads(res)
-
-	def get_data(self, query_str, page=1, fields=""):
-		res = self.get_json_data(query_str, page, fields)
-		return json.loads(res)
-
-	def get_json_data(self, query_str, page=1, fields=""):
-		api_full_url = "%s%s" % (self.base_url, self.search_api_url)
-		param = {"qbase64": base64.b64encode(bytes(query_str.encode('utf-8'))), "email": self.email, "key": self.key,
-				 "page": page,
-				 "fields": fields,
-				 "size": self.size,
-				 "full": self.full}
-		res = self.__http_get(api_full_url, param)
-		return res
-
-	def __http_get(self, url, param):
-		ssl._create_default_https_context = ssl._create_unverified_context
 		param = urllib.parse.urlencode(param)
 		url = "%s?%s" % (url, param)
+
+		res = self.__http_get(url)
+		return json.loads(res)
+	
+	#进行fofa请求并全局取消ssl认证
+	def __http_get(self, url):
+		print(url)
 		try:
-			req = urllib.request.Request(url)
-			res = urllib.request.urlopen(req).read().decode('utf-8')
-			if "errmsg" in res:
-				raise RuntimeError(res)
+			res = requests.get(url, proxies=self.proxy, timeout=5, verify=False)
+			if "errmsg" in res.text:
+				raise RuntimeError(res.text)
 		except Exception as e:
 			raise e
-		return res
+		return res.text
+	
+	def get_next_data(self):
+		api_full_url = "%s%s" % (self.base_url, self.next_api_url)
+		base64_query_str = base64.b64encode(self.query_str)
+		param = {"qbase64": base64_query_str , "fields": self.fileds, "size": self.size, "full": self.full}
+		print(param)
+
+		res = self.__http_get(api_full_url, param=param)
+		print(res)
+		return json.loads(res)
+
 
 #域名查询
 def host_merge(query_host,email, key):
@@ -243,17 +260,26 @@ def deal_with_input(input_data):
 	key = re.search(domain_pattern, input_data)
 	# database = 
 
+
+
 if __name__ == '__main__':
 
 	#初始化fofa客户端
-	client = Client()
-	query_str = parser()
+	client = Client("shiro")
+	get_info = client.__http_get
+	print(get_info)
+	# next_data = client.get_next_data()
+	# print(next_data)
+	# next_query = client.get_next_data()
+	# print(get_info)
+
+	# query_str = parser()
 	# print(query_str)
 	# write_excel(query_str[0], client.key)
 
 
 	#单个IP查询数据处理
-	res = query(query_str[0], client.key)
+	# res = query(query_str[0], client.key)
 	
 	#读取需要处理的数据
 	# hosts = read_file('ten.txt')
