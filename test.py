@@ -9,9 +9,14 @@ import urllib3
 import base64
 import json
 import math
+import datetime
+import xlsxwriter
+import re
 
 #取消https告警
 urllib3.disable_warnings()
+
+
 
 class Fofa_Client:
 
@@ -133,29 +138,116 @@ class Fofa_Client:
 
 #文件读写类
 class File_Deal(object):
-	def __init__(self):
+	def __init__(self,data=""):
+
+		#读取要写入的字段
+		config = configparser.ConfigParser()
+		config.read('fofa.ini', encoding='utf-8')
+
+		#search写入读取的头文件
+		self.fields = config.get('fields', 'fields')
+
+		#读取文件
 		self.read_filename = 'urls.txt'
-		self.write_filename = 'output.xlsx'
+
+		#输出文件
+		now = datetime.datetime.now()
+		now_str = now.strftime('%Y%m%d_%H%M%S')
+		self.write_filename = f'{now_str}.xlsx'
+
+		#需要处理的数据
+		self.data = data
+
+		#host写入读取的头文件
+		self.host_headers_list = ['ip','port', 'protocol', 'country', 'host', 'domain', 'icp', 'title']
 
 
 	def read_file(self):
+
+		#一次性将数据读成列表
 		with open(self.read_filename, "r+", encoding='utf-8') as file:
 			lines = file.readlines()
+			# print(self.fields)
 		return lines
 	
-	def write_file(self):
-		pass
+	def search_write_file(self):
+		workbook = xlsxwriter.Workbook(self.write_filename)
+		worksheet = workbook.add_worksheet()
+
+		# print(self.fields)
+		#headers 文件获取
+		headers = self.fields
+		headers_list = headers.split(',')
+
+		#写入文件头,并在原来的基础上添加新的一行url
+		# print(headers_list)
+		headers_list.insert(5, 'url')
+		# print(headers_list)
+		worksheet.write_row('A1', headers_list)
+		
+		data = self.data['results']
+		#增加新行url
+		for line in range(len(data)):
+			data_list = data[line]
+
+			if 'http://' in data_list[4] or 'https://' in data_list[4]: 
+				url = data_list[4]
+			elif 'http' in data_list[2] or 'https' in data_list[2]:
+				url = data_list[2] + "://" + data_list[4]
+			else:
+				url = None
+			data_list.insert(5, url)
+
+			worksheet.write_row(f'A{line + 2}', data_list)
+			
+		workbook.close()
+
+	def host_write_file(self):
+
+		#初始化一个excel表
+		workbook = xlsxwriter.Workbook(self.write_filename)
+		worksheet = workbook.add_worksheet()
+		
+		#定义列表头
+		host_headers_list = self.host_headers_list
+		
+		#添加合成字段url
+		host_headers_list.insert(5, 'url')
+		worksheet.write_row('A1', host_headers_list)
+
+		#打印fofa返回的数据
+		# print(self.data)
+
+		#待处理的数据
+		data = self.data['results']
+		for line in range(len(data)):
+
+			data_list = data[line]
+
+			#添加合成数据url
+			if "http://" in data_list[4] or "https://" in data_list[4]:
+				url = data_list[4]
+			elif "http" in data_list[2] or "https://" in data_list[2]:
+				url = data_list[2] + "://" + data_list[4]
+			else:
+				url = None
+			data_list.insert(5, url)
+
+			#写入数据
+			worksheet.write_row(f'A{line + 2}', data_list)
+
+		workbook.close()
+
 
 
 
 if __name__ == "__main__":
 
-	#fofa客户端类测试
-	# fofa_client = Fofa_Client("shiro")
-	# res = fofa_client.get_search_data()
-	# print(res)
+	#fofa模块调用
+	fofa_client = Fofa_Client("8.131.50.94")
+	res = fofa_client.get_search_data()
 
-	#文件读写类测试
-	file_deal = File_Deal()
-	lines = file_deal.read_file()
-	print(lines)
+	#文件读写类调用
+	file_deal = File_Deal(res)
+	file_deal.host_write_file()
+
