@@ -8,10 +8,13 @@ import urllib
 import urllib3
 import base64
 import json
-import math
 import datetime
 import xlsxwriter
+import argparse
+import time
+
 import re
+import math
 
 #取消https告警
 urllib3.disable_warnings()
@@ -65,8 +68,10 @@ class Fofa_Client:
 
 	#基础的url处理
 	def __http_get(self, url, param):
+
 		param = urllib.parse.urlencode(param)
 		url = url + "?" + param
+
 		try:
 			res = requests.get(url=url, headers=self.headers, proxies=self.proxy, timeout=30, verify=False)
 			if "errmsg" in res:
@@ -74,10 +79,12 @@ class Fofa_Client:
 		except Exception as e:
 			print(e)
 			traceback.print_exc()
+
 		return res.text
 	
 	#查询接口，无需翻页，最多10000条数据
 	def get_search_data(self):
+
 		api_full_url = self.base_url + self.search_api
 		query_str = self.query_str.encode('utf-8')
 		base64_query = base64.b64encode(query_str)
@@ -101,6 +108,7 @@ class Fofa_Client:
 	
 	#host聚合接口
 	def get_host_data(self):
+
 		host = self.query_str
 		api_full_url = self.base_url + self.host_api_url + host
 		param = {"key": self.key,}
@@ -111,6 +119,7 @@ class Fofa_Client:
 
 	#连续翻页接口,fofa高级会员只能查询前10000
 	def get_next_data(self):
+
 		api_full_url = self.base_url + self.next_api_url
 		query_str = self.query_str.encode('utf-8')
 		base64_query = base64.b64encode(query_str)
@@ -136,8 +145,9 @@ class Fofa_Client:
 		# 	res = result_dict
 		return res
 
-#文件读写类
+#文件写入类
 class File_Deal(object):
+
 	def __init__(self,data=""):
 
 		#读取要写入的字段
@@ -146,9 +156,6 @@ class File_Deal(object):
 
 		#search写入读取的头文件
 		self.fields = config.get('fields', 'fields')
-
-		#读取文件
-		self.read_filename = 'urls.txt'
 
 		#输出文件
 		now = datetime.datetime.now()
@@ -160,17 +167,9 @@ class File_Deal(object):
 
 		#host写入读取的头文件
 		self.host_headers_list = ['ip','port', 'protocol', 'country', 'host', 'domain', 'icp', 'title']
-
-
-	def read_file(self):
-
-		#一次性将数据读成列表
-		with open(self.read_filename, "r+", encoding='utf-8') as file:
-			lines = file.readlines()
-			# print(self.fields)
-		return lines
 	
 	def search_write_file(self):
+
 		workbook = xlsxwriter.Workbook(self.write_filename)
 		worksheet = workbook.add_worksheet()
 
@@ -185,7 +184,7 @@ class File_Deal(object):
 		# print(headers_list)
 		worksheet.write_row('A1', headers_list)
 		
-		data = self.data['results']
+		data = self.data
 		#增加新行url
 		for line in range(len(data)):
 			data_list = data[line]
@@ -219,9 +218,9 @@ class File_Deal(object):
 		# print(self.data)
 
 		#待处理的数据
-		data = self.data['results']
+		print(data)
+		data = self.data
 		for line in range(len(data)):
-
 			data_list = data[line]
 
 			#添加合成数据url
@@ -238,16 +237,84 @@ class File_Deal(object):
 
 		workbook.close()
 
+#文件读取
+def read_file(file_name):
 
+	try:
+	#读取文件
+		with open(file_name, "r+", encoding="utf-8") as file:
+			lines = file.readlines()
+			return lines
+	except Exception as e:
+		return f"请输入正确的文件，{e}"
+
+#启动函数
+def start():
+	#获取args命令
+	parsers = argparse.ArgumentParser()
+	group = parsers.add_mutually_exclusive_group()
+	group.add_argument('-q', "--query", help="请输入一个查询语句")
+	group.add_argument('-l', "--file", help="请输入一个查询文件")
+	group.add_argument('-bhq', "--bat_host_query", help="批量根据ip和域名查询资产")
+	args = parsers.parse_args()
+
+	#对获取的参数进行判断和处理
+	if args.query:
+		query_str = args.query
+		fofa_client = Fofa_Client(query_str)
+		res = fofa_client.get_search_data()
+
+	#批量get_search_data
+	if args.file:
+		query_list = read_file(args.file)
+
+		data_list = []
+		#读取每行进行处理
+		for line in query_list:
+			host_query_str = line.strip()
+
+			#使用客户端获取数据
+			fofa_client = Fofa_Client(host_query_str)
+			res = fofa_client.get_search_data()
+
+			#列表数据相加
+			res_list = res['results']
+			data_list = data_list + res_list
+
+		print(data_list)
+			# print(res)
+		#将数据合并写入文件中
+		file_deal = File_Deal(data_list)
+		file_deal.host_write_file()
+
+	#批量get_host_data
+	if args.bat_host_query:
+		query_list = read_file(args.bat_host_query)
+
+		data_list = []
+		for line in query_list:
+			
+			#批量host
+			host_query_str = line.strip()
+			fofa_client = Fofa_Client(host_query_str)
+			res = fofa_client.get_host_data()
+			time.sleep(1.5)
+
+			# print(res)
+			file_deal = File_Deal(res)
+			file_deal.host_write_file()
 
 
 if __name__ == "__main__":
+	start()
+	
+
 
 	#fofa模块调用
-	fofa_client = Fofa_Client("8.131.50.94")
-	res = fofa_client.get_search_data()
+	# fofa_client = Fofa_Client("8.131.50.94")
+	# res = fofa_client.get_search_data()
 
 	#文件读写类调用
-	file_deal = File_Deal(res)
-	file_deal.host_write_file()
+	# file_deal = File_Deal(res)
+	# file_deal.host_write_file()
 
