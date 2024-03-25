@@ -9,17 +9,27 @@ import urllib3
 import base64
 import json
 import datetime
-import xlsxwriter
+import csv
 import argparse
 import time
 
+import xlsxwriter
 import re
 import math
 
+#请求失败重试模块
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+retry_times = 3
+retry_backoff_factor = 3
+session = requests.Session()
+retry = Retry(total=retry_times, backoff_factor=retry_backoff_factor, status_forcelist=[500, 502, 503, 504, 429], allowed_methods=["HEAD", "GET", "OPTIONS"])
+adapter = HTTPAdapter(max_retries=retry)
+session.mount("http://", adapter)
+session.mount('https://', adapter)
+
 #取消https告警
 urllib3.disable_warnings()
-
-
 
 class Fofa_Client:
 
@@ -73,7 +83,8 @@ class Fofa_Client:
 		url = url + "?" + param
 
 		try:
-			res = requests.get(url=url, headers=self.headers, proxies=self.proxy, timeout=30, verify=False)
+			res = session.get(url=url, headers=self.headers, proxies=self.proxy, timeout=10, verify=False)
+
 			if "errmsg" in res:
 				raise RuntimeError(res)
 		except Exception as e:
@@ -111,9 +122,10 @@ class Fofa_Client:
 
 		host = self.query_str
 		api_full_url = self.base_url + self.host_api_url + host
-		param = {"key": self.key,}
+		param = {"detail": "true", "key": self.key}
 
 		res = self.__http_get(api_full_url, param)
+		time.sleep(1.5)
 		res = json.loads(res)
 		return res
 
@@ -146,7 +158,7 @@ class Fofa_Client:
 		return res
 
 #文件写入类
-class File_Deal(object):
+class File_write(object):
 
 	def __init__(self,data=""):
 
@@ -159,14 +171,15 @@ class File_Deal(object):
 
 		#输出文件
 		now = datetime.datetime.now()
-		now_str = now.strftime('%Y%m%d_%H%M%S')
-		self.write_filename = f'{now_str}.xlsx'
+		self.now_str = now.strftime('%Y%m%d_%H%M%S')
+		self.write_filename = f'{self.now_str}.xlsx'
 
 		#需要处理的数据
 		self.data = data
 
 		#host写入读取的头文件
-		self.host_headers_list = ['ip','port', 'protocol', 'country', 'host', 'domain', 'icp', 'title']
+		self.host_headers_list = ['host','ip', 'country_name', 'country_code', 'port', 'protocol', 'url']
+		# self.host_headers_list = ['host','ip', 'country_name', 'country_code', 'port', 'protocol', 'url', 'products']
 	
 	def search_write_file(self):
 
@@ -203,39 +216,30 @@ class File_Deal(object):
 
 	def host_write_file(self):
 
-		#初始化一个excel表
-		workbook = xlsxwriter.Workbook(self.write_filename)
-		worksheet = workbook.add_worksheet()
+		# #初始化一个excel表
+		# workbook = xlsxwriter.Workbook(self.write_filename)
+		# worksheet = workbook.add_worksheet()
 		
-		#定义列表头
-		host_headers_list = self.host_headers_list
-		
-		#添加合成字段url
-		host_headers_list.insert(5, 'url')
-		worksheet.write_row('A1', host_headers_list)
+		# #定义列表头
+		# host_headers_list = self.host_headers_list
+		# print(host_headers_list)
+		# worksheet.write_row('A1', host_headers_list)
 
-		#打印fofa返回的数据
-		# print(self.data)
+		# # print(data)
+		# for line in range(len(self.data)):
+		# 	data_list = self.data[line]
 
-		#待处理的数据
-		print(data)
-		data = self.data
-		for line in range(len(data)):
-			data_list = data[line]
+		# 	#写入数据
+		# 	worksheet.write_row(f'A{line + 2}', data_list)
 
-			#添加合成数据url
-			if "http://" in data_list[4] or "https://" in data_list[4]:
-				url = data_list[4]
-			elif "http" in data_list[2] or "https://" in data_list[2]:
-				url = data_list[2] + "://" + data_list[4]
-			else:
-				url = None
-			data_list.insert(5, url)
+		# workbook.close()
+		file_name = f'{self.now_str}.csv'
+		with open(file_name, 'w', newline='') as file:
 
-			#写入数据
-			worksheet.write_row(f'A{line + 2}', data_list)
+			writer = csv.writer(file)
+			writer.writerow(self.host_headers_list)
+			writer.writerows(self.data)
 
-		workbook.close()
 
 #文件读取
 def read_file(file_name):
@@ -248,8 +252,8 @@ def read_file(file_name):
 	except Exception as e:
 		return f"请输入正确的文件，{e}"
 
-#启动函数
-def start():
+#输出结果
+def output_result():
 	#获取args命令
 	parsers = argparse.ArgumentParser()
 	group = parsers.add_mutually_exclusive_group()
@@ -269,52 +273,93 @@ def start():
 		query_list = read_file(args.file)
 
 		data_list = []
+
 		#读取每行进行处理
-		for line in query_list:
-			host_query_str = line.strip()
+		leng_query_list = len(query_list)
+		for i in range(leng_query_list):
+			query_str = query_list[i].strip()
+			print(f"正在使用fofa进行查询 {query_str},目前查询到第{i}个参数，总共需查询{leng_query_list}个参数")
 
 			#使用客户端获取数据
-			fofa_client = Fofa_Client(host_query_str)
+			fofa_client = Fofa_Client(query_str)
 			res = fofa_client.get_search_data()
+			# print(f'测试,{res}')
 
 			#列表数据相加
 			res_list = res['results']
 			data_list = data_list + res_list
 
-		print(data_list)
+		# print(data_list)
 			# print(res)
 		#将数据合并写入文件中
-		file_deal = File_Deal(data_list)
-		file_deal.host_write_file()
+		file_deal = File_write(data_list)
+		file_deal.search_write_file()
 
 	#批量get_host_data
 	if args.bat_host_query:
 		query_list = read_file(args.bat_host_query)
 
 		data_list = []
-		for line in query_list:
-			
-			#批量host
-			host_query_str = line.strip()
+		#读取每行进行处理
+
+		leng_host_query_list = len(query_list)
+		for i in range(leng_host_query_list):
+			host_query_str = query_list[i].strip()
+
+			print(f"正在使用fofa host聚合接口进行查询 {host_query_str},目前查询到第{i}个参数，总共需查询{leng_host_query_list}个参数")
+
 			fofa_client = Fofa_Client(host_query_str)
 			res = fofa_client.get_host_data()
-			time.sleep(1.5)
+			try:
+				row_list = []
+				#数据重新组装
+				row_list.append(res['host'])
+				row_list.append(res['ip'])
+				row_list.append(res['country_name'])
+				row_list.append(res['country_code'])
 
-			# print(res)
-			file_deal = File_Deal(res)
-			file_deal.host_write_file()
+				#循环访问port端口的数据
+				for port in res['ports']:
+					temp_row_list = []
+					temp_row_list = list(row_list)
+					# print(row_list)
+
+					#添加port字段
+					temp_row_list.append(port['port'])
+					temp_row_list.append(port['protocol'])
+
+					#添加url
+					if 'http' in port['protocol'] or 'https' in port['protocol']:
+						url = port['protocol'] + "://" + res['ip'] + ":" + str(port['port'])
+						temp_row_list.append(url)
+					else:
+						temp_row_list.append(None)
+
+					#判断port字典中是否有products键值,暂时不需要写入
+					# if 'products' in port:
+					# 	temp_row_list.append(port['products'])
+					# else:
+					# 	temp_row_list.append(None)
+						
+					data_list.append(temp_row_list)
+			except Exception as e:
+				print(e)
+
+		#调用host写入函数进行写入
+		file_write = File_write(data_list)
+		file_write.host_write_file()
 
 
 if __name__ == "__main__":
-	start()
+	output_result()
+	
+	# fofa_client = Fofa_Client("8.131.50.94")
+	# res = fofa_client.get_host_data()
+	# print(res)
+
 	
 
+	# data_list = res['results']
+	# file_write = File_write(data_list)
 
-	#fofa模块调用
-	# fofa_client = Fofa_Client("8.131.50.94")
-	# res = fofa_client.get_search_data()
-
-	#文件读写类调用
-	# file_deal = File_Deal(res)
-	# file_deal.host_write_file()
-
+	# file_write.host_write_file()
