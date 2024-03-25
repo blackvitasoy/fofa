@@ -186,6 +186,11 @@ class File_write(object):
 		workbook = xlsxwriter.Workbook(self.write_filename)
 		worksheet = workbook.add_worksheet()
 
+		#url单独写一个sheet表
+		worksheet_url = workbook.add_worksheet('urls')
+		urls_list = []
+		
+
 		# print(self.fields)
 		#headers 文件获取
 		headers = self.fields
@@ -204,13 +209,23 @@ class File_write(object):
 
 			if 'http://' in data_list[4] or 'https://' in data_list[4]: 
 				url = data_list[4]
+
+				#增加新的urls_list
+				urls_list.append(url)
 			elif 'http' in data_list[2] or 'https' in data_list[2]:
 				url = data_list[2] + "://" + data_list[4]
+
+				#增加新的urls_list
+				urls_list.append(url)
 			else:
 				url = None
 			data_list.insert(5, url)
 
 			worksheet.write_row(f'A{line + 2}', data_list)
+		
+		#单独写入新的url
+		urls_list = list(set(urls_list))
+		worksheet_url.write_column('A1', urls_list)
 			
 		workbook.close()
 
@@ -233,12 +248,39 @@ class File_write(object):
 		# 	worksheet.write_row(f'A{line + 2}', data_list)
 
 		# workbook.close()
-		file_name = f'{self.now_str}.csv'
-		with open(file_name, 'w', newline='') as file:
+		# file_name = f'{self.now_str}.csv'
+		# with open(file_name, 'w', newline='') as file:
 
-			writer = csv.writer(file)
-			writer.writerow(self.host_headers_list)
-			writer.writerows(self.data)
+		# 	writer = csv.writer(file)
+		# 	writer.writerow(self.host_headers_list)
+		# 	writer.writerows(self.data)
+		
+		#新建workbook
+		workbook = xlsxwriter.Workbook(self.write_filename)
+		worksheet = workbook.add_worksheet()
+
+		#增加url表
+		worksheet_urls = workbook.add_worksheet('urls')
+
+		#写入urls_list
+		urls_list = []
+		#写入头
+		worksheet.write_row('A1', self.host_headers_list)
+		
+		#循环写入数据
+		for i in range(len(self.data)):
+			worksheet.write_row(f'A{i+2}', self.data[i])
+
+			#增加urls列
+			if self.data[i][6] != None:
+				urls_list.append(self.data[i][6])
+		
+		#去重写入
+		urls_list = list(set(urls_list))
+		worksheet_urls.write_column('A1', urls_list)
+
+		workbook.close()
+		
 
 
 #文件读取
@@ -266,7 +308,12 @@ def output_result():
 	if args.query:
 		query_str = args.query
 		fofa_client = Fofa_Client(query_str)
+		print(f"正在对输入的字符串进行查询:{args.query}")
 		res = fofa_client.get_search_data()
+		dict_res = res['results']
+		
+		file_deal = File_write(dict_res)
+		file_deal.search_write_file()
 
 	#批量get_search_data
 	if args.file:
@@ -278,7 +325,7 @@ def output_result():
 		leng_query_list = len(query_list)
 		for i in range(leng_query_list):
 			query_str = query_list[i].strip()
-			print(f"正在使用fofa进行查询 {query_str},目前查询到第{i}个参数，总共需查询{leng_query_list}个参数")
+			print(f"正在使用fofa进行查询 {query_str},目前查询到第{i+1}个参数，总共需查询{leng_query_list}个参数")
 
 			#使用客户端获取数据
 			fofa_client = Fofa_Client(query_str)
@@ -306,7 +353,7 @@ def output_result():
 		for i in range(leng_host_query_list):
 			host_query_str = query_list[i].strip()
 
-			print(f"正在使用fofa host聚合接口进行查询 {host_query_str},目前查询到第{i}个参数，总共需查询{leng_host_query_list}个参数")
+			print(f"正在使用fofa host聚合接口进行查询 {host_query_str},目前查询到第{i+1}个参数，总共需查询{leng_host_query_list}个参数")
 
 			fofa_client = Fofa_Client(host_query_str)
 			res = fofa_client.get_host_data()
